@@ -56,6 +56,15 @@
   object-fit: cover;
 }
 
+.gallery-main-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
 .gallery-main .badge {
   position: absolute;
   top: var(--spacing-md);
@@ -110,13 +119,18 @@
 }
 
 .product-price .price-current {
-  font-size: 1.5rem;
-  font-weight: 600;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #1A1A1A;
+}
+
+.product-price.has-discount .price-current {
+  color: #dc2626;
 }
 
 .product-price .price-original {
   font-size: 1.125rem;
-  color: var(--text-muted);
+  color: #71717a;
   text-decoration: line-through;
 }
 

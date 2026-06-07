@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { normalizeProductData } from '../utils/productImages.js';
 
 const CartContext = createContext();
 
@@ -13,7 +14,19 @@ export const useCart = () => {
 export const CartProvider = ({ children }) => {
   const [items, setItems] = useState(() => {
     const saved = localStorage.getItem('velado_cart');
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) {
+      return [];
+    }
+
+    try {
+      const parsedItems = JSON.parse(saved);
+      return Array.isArray(parsedItems)
+        ? parsedItems.map((item) => normalizeProductData(item))
+        : [];
+    } catch (error) {
+      console.error('Sepet verisi okunamadı:', error);
+      return [];
+    }
   });
   const [isCartOpen, setIsCartOpen] = useState(false);
 
@@ -22,9 +35,11 @@ export const CartProvider = ({ children }) => {
   }, [items]);
 
   const addToCart = (product, quantity = 1, size = null, color = null) => {
+    const normalizedProduct = normalizeProductData(product);
+
     setItems(prevItems => {
       const existingIndex = prevItems.findIndex(
-        item => item.id === product.id && item.size === size && item.color === color
+        item => item.id === normalizedProduct.id && item.size === size && item.color === color
       );
 
       if (existingIndex > -1) {
@@ -33,7 +48,7 @@ export const CartProvider = ({ children }) => {
         return newItems;
       }
 
-      return [...prevItems, { ...product, quantity, size, color }];
+      return [...prevItems, { ...normalizedProduct, quantity, size, color }];
     });
   };
 

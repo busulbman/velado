@@ -12,6 +12,7 @@ import {
   limit
 } from 'firebase/firestore';
 import { db } from './config.js';
+import { normalizeProductData, prepareProductForSave } from '../utils/productImages.js';
 
 const PRODUCTS_COLLECTION = 'products';
 const TURKISH_CHAR_MAP = {
@@ -63,7 +64,8 @@ export const slugifyCategory = (category) => (
 export const getCategorySummariesFromProducts = (products = []) => {
   const categoryMap = new Map();
 
-  products.forEach((product) => {
+  products.forEach((rawProduct) => {
+    const product = normalizeProductData(rawProduct);
     const name = normalizeCategoryName(product.category);
 
     if (!name) {
@@ -129,7 +131,10 @@ export const getProducts = async (filters = {}) => {
     }
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return snapshot.docs.map((productDoc) => normalizeProductData({
+      id: productDoc.id,
+      ...productDoc.data()
+    }));
   } catch (error) {
     console.error('Error fetching products:', error);
     return [];
@@ -141,7 +146,10 @@ export const getProductById = async (id) => {
     const docRef = doc(db, PRODUCTS_COLLECTION, id);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      return { id: docSnap.id, ...docSnap.data() };
+      return normalizeProductData({
+        id: docSnap.id,
+        ...docSnap.data()
+      });
     }
     return null;
   } catch (error) {
@@ -160,8 +168,9 @@ export const getFeaturedProducts = async (count = 8) => {
 
 export const addProduct = async (productData) => {
   try {
+    const normalizedProductData = prepareProductForSave(productData);
     const docRef = await addDoc(collection(db, PRODUCTS_COLLECTION), {
-      ...productData,
+      ...normalizedProductData,
       createdAt: new Date().toISOString()
     });
     return docRef.id;
@@ -174,8 +183,9 @@ export const addProduct = async (productData) => {
 export const updateProduct = async (id, updates) => {
   try {
     const docRef = doc(db, PRODUCTS_COLLECTION, id);
+    const normalizedUpdates = prepareProductForSave(updates);
     await updateDoc(docRef, {
-      ...updates,
+      ...normalizedUpdates,
       updatedAt: new Date().toISOString()
     });
   } catch (error) {

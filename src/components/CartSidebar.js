@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { X, Plus, Minus, Trash2, ShoppingBag } from 'lucide-react';
 import { useCart } from '../context/CartContext.js';
+import { normalizeProductImages } from '../utils/productImages.js';
 import './CartSidebar.css';
 
 const CartSidebar = () => {
@@ -42,7 +43,7 @@ const CartSidebar = () => {
               {items.map((item, index) => (
                 <div key={`${item.id}-${item.size}-${item.color}-${index}`} className="cart-item">
                   <div className="cart-item-image">
-                    <img src={item.images?.[0]} alt={item.name} />
+                    <img src={normalizeProductImages(item)[0]} alt={item.name} />
                   </div>
                   <div className="cart-item-details">
                     <h4>{item.name}</h4>

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, ShoppingBag } from 'lucide-react';
+import { Heart, ShoppingBag, Image as ImageIcon } from 'lucide-react';
 import { useCart } from '../context/CartContext.js';
+import { normalizeProductImages } from '../utils/productImages.js';
 import './ProductCard.css';
 
 const ProductCard = ({ product }) => {
@@ -14,11 +15,11 @@ const ProductCard = ({ product }) => {
     name,
     price,
     originalPrice,
-    images,
     category,
     isNew,
     discount
   } = product;
+  const productImages = normalizeProductImages(product);
 
   const handleAddToCart = (e) => {
     e.preventDefault();
@@ -49,11 +50,17 @@ const ProductCard = ({ product }) => {
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className="product-card-image">
-        <img
-          src={isHovered && images?.[1] ? images[1] : images?.[0]}
-          alt={name}
-          loading="lazy"
-        />
+        {productImages[0] ? (
+          <img
+            src={isHovered && productImages[1] ? productImages[1] : productImages[0]}
+            alt={name}
+            loading="lazy"
+          />
+        ) : (
+          <div className="product-card-image-placeholder">
+            <ImageIcon size={28} />
+          </div>
+        )}
 
         {(isNew || discount) && (
           <div className="product-card-badges">

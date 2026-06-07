@@ -4,18 +4,40 @@ import { ChevronRight, CreditCard, Truck, Check } from 'lucide-react';
 import { useCart } from '../context/CartContext.js';
 import { useAuth } from '../context/AuthContext.js';
 import { createOrder } from '../firebase/orders.js';
+import { getSettings } from '../firebase/admin.js';
+import { normalizeProductImages } from '../utils/productImages.js';
 import './Checkout.css';
 
 const Checkout = () => {
   const navigate = useNavigate();
   const { items, getSubtotal, clearCart } = useCart();
   const { user, isAuthenticated } = useAuth();
+  const [shippingSettings, setShippingSettings] = useState({
+    freeShippingLimit: 1000,
+    shippingCost: 49
+  });
 
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/giris', { state: { from: { pathname: '/odeme' } } });
     }
   }, [isAuthenticated, navigate]);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const settings = await getSettings();
+        setShippingSettings({
+          freeShippingLimit: settings.freeShippingLimit || 1000,
+          shippingCost: settings.shippingCost || 49
+        });
+      } catch (error) {
+        console.error('Error fetching settings:', error);
+      }
+    };
+    fetchSettings();
+  }, []);
+
   const [step, setStep] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderComplete, setOrderComplete] = useState(false);
@@ -35,7 +57,7 @@ const Checkout = () => {
     cvv: ''
   });
 
-  const shippingCost = getSubtotal() >= 500 ? 0 : 49;
+  const shippingCost = getSubtotal() >= shippingSettings.freeShippingLimit ? 0 : shippingSettings.shippingCost;
   const total = getSubtotal() + shippingCost;
 
   const formatPrice = (price) => {
@@ -70,6 +92,7 @@ const Checkout = () => {
           name: item.name,
           price: item.price,
           quantity: item.quantity,
+          images: normalizeProductImages(item),
           size: item.size || null,
           color: item.color || null
         })),
@@ -330,7 +353,7 @@ const Checkout = () => {
               {items.map((item, idx) => (
                 <div key={idx} className="summary-item">
                   <div className="summary-item-image">
-                    <img src={item.images?.[0]} alt={item.name} />
+                    <img src={normalizeProductImages(item)[0]} alt={item.name} />
                     <span className="summary-item-qty">{item.quantity}</span>
                   </div>
                   <div className="summary-item-info">

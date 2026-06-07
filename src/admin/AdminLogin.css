@@ -1,0 +1,231 @@
+.admin-login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #0a0a0b 0%, #18181b 100%);
+}
+
+.admin-login-container {
+  width: 100%;
+  max-width: 400px;
+  background: #111113;
+  border: 1px solid #27272a;
+  border-radius: 16px;
+  padding: 2.5rem;
+}
+
+.admin-login-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.admin-login-icon {
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(135deg, #D4C5A9 0%, #C4B599 100%);
+  color: #0a0a0b;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1.5rem;
+}
+
+.admin-login-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #fafafa;
+  margin-bottom: 0.5rem;
+}
+
+.admin-login-header p {
+  font-size: 0.875rem;
+  color: #71717a;
+}
+
+.admin-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.admin-login-error {
+  padding: 0.875rem 1rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  color: #ef4444;
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.admin-form-group label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #a1a1aa;
+  margin-bottom: 0.5rem;
+}
+
+.admin-form-group input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  color: #fafafa;
+  font-size: 0.9375rem;
+  transition: all 200ms ease;
+}
+
+.admin-form-group input:focus {
+  outline: none;
+  border-color: #D4C5A9;
+  box-shadow: 0 0 0 3px rgba(212, 197, 169, 0.15);
+}
+
+.admin-form-group input::placeholder {
+  color: #52525b;
+}
+
+.admin-password-input {
+  position: relative;
+}
+
+.admin-password-input input {
+  padding-right: 48px;
+}
+
+.admin-password-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #71717a;
+  border-radius: 6px;
+  transition: all 200ms ease;
+}
+
+.admin-password-toggle:hover {
+  background: #27272a;
+  color: #a1a1aa;
+}
+
+.admin-login-btn {
+  width: 100%;
+  padding: 0.875rem 1.5rem;
+  background: linear-gradient(135deg, #D4C5A9 0%, #C4B599 100%);
+  color: #0a0a0b;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  border-radius: 8px;
+  margin-top: 0.5rem;
+  transition: all 200ms ease;
+}
+
+.admin-login-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(212, 197, 169, 0.3);
+}
+
+.admin-login-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.admin-login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Setup Page */
+.admin-setup-content {
+  margin-top: 1.5rem;
+}
+
+.setup-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1rem;
+}
+
+.setup-status h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #fafafa;
+  margin: 0;
+}
+
+.setup-status p {
+  font-size: 0.9375rem;
+  color: #a1a1aa;
+  margin: 0;
+}
+
+.setup-status.success svg {
+  color: #22c55e;
+}
+
+.setup-status.exists svg {
+  color: #3b82f6;
+}
+
+.setup-status.error svg {
+  color: #ef4444;
+}
+
+.setup-info {
+  width: 100%;
+  text-align: center;
+}
+
+.credentials-box {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.credential-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+}
+
+.credential-item:not(:last-child) {
+  border-bottom: 1px solid #27272a;
+}
+
+.credential-label {
+  font-size: 0.875rem;
+  color: #71717a;
+}
+
+.credential-value {
+  font-size: 0.875rem;
+  font-family: monospace;
+  color: #D4C5A9;
+}
+
+.admin-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #27272a;
+  border-top-color: #D4C5A9;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

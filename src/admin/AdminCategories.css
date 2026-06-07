@@ -1,0 +1,124 @@
+/* Categories Page */
+.admin-categories {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.categories-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.categories-header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.categories-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #fafafa;
+}
+
+.categories-count {
+  font-size: 0.875rem;
+  color: #71717a;
+  background: #27272a;
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+/* Categories Grid */
+.categories-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+.category-card {
+  background: #111113;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  padding: 1.25rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  transition: all 200ms ease;
+}
+
+.category-card:hover {
+  border-color: #3f3f46;
+}
+
+.category-card-icon {
+  width: 48px;
+  height: 48px;
+  background: rgba(212, 197, 169, 0.15);
+  color: #D4C5A9;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.category-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.category-card-info h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fafafa;
+  margin-bottom: 0.25rem;
+}
+
+.category-card-info p {
+  font-size: 0.875rem;
+  color: #71717a;
+  margin-bottom: 0.5rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.category-slug {
+  font-size: 0.75rem;
+  font-family: monospace;
+  color: #52525b;
+  background: #18181b;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.category-card-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Empty State */
+.empty-state.full {
+  grid-column: 1 / -1;
+  background: #111113;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  padding: 3rem;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .categories-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+
+  .categories-grid {
+    grid-template-columns: 1fr;
+  }
+}

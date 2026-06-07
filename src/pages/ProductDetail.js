@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Heart, Minus, Plus, Truck, RefreshCw, Shield, ChevronRight } from 'lucide-react';
+import { Heart, Minus, Plus, Truck, RefreshCw, Shield, ChevronRight, Image as ImageIcon } from 'lucide-react';
 import { useCart } from '../context/CartContext.js';
 import ProductCard from '../components/ProductCard.js';
 import { getProductById, getProducts, slugifyCategory } from '../firebase/products.js';
+import { normalizeProductImages } from '../utils/productImages.js';
 import './ProductDetail.css';
 
 const ProductDetail = () => {
@@ -25,6 +26,7 @@ const ProductDetail = () => {
         const found = await getProductById(id);
         setProduct(found);
         if (found) {
+          setSelectedImage(0);
           setSelectedSize(found.sizes?.[0] || null);
           setSelectedColor(found.colors?.[0] || null);
           const allProducts = await getProducts({ category: found.category });
@@ -71,6 +73,8 @@ const ProductDetail = () => {
   };
 
   const categorySlug = slugifyCategory(product.category);
+  const productImages = normalizeProductImages(product);
+  const selectedImageUrl = productImages[selectedImage] || productImages[0] || '';
 
   return (
     <div className="product-detail">
@@ -90,13 +94,19 @@ const ProductDetail = () => {
         <div className="product-detail-grid">
           <div className="product-gallery">
             <div className="gallery-main">
-              <img src={product.images[selectedImage]} alt={product.name} />
+              {selectedImageUrl ? (
+                <img src={selectedImageUrl} alt={product.name} />
+              ) : (
+                <div className="gallery-main-placeholder">
+                  <ImageIcon size={32} />
+                </div>
+              )}
               {product.isNew && <span className="badge badge-new">Yeni</span>}
               {product.discount && <span className="badge badge-sale">%{product.discount}</span>}
             </div>
-            {product.images.length > 1 && (
+            {productImages.length > 1 && (
               <div className="gallery-thumbs">
-                {product.images.map((img, idx) => (
+                {productImages.map((img, idx) => (
                   <button
                     key={idx}
                     className={`gallery-thumb ${selectedImage === idx ? 'active' : ''}`}
@@ -113,7 +123,7 @@ const ProductDetail = () => {
             <span className="product-category">{product.category}</span>
             <h1 className="product-name">{product.name}</h1>
 
-            <div className="product-price">
+            <div className={`product-price ${product.originalPrice || product.discount ? 'has-discount' : ''}`}>
               <span className="price-current">{formatPrice(product.price)}</span>
               {product.originalPrice && (
                 <span className="price-original">{formatPrice(product.originalPrice)}</span>
