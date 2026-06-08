@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { normalizeProductData } from '../utils/productImages.js';
+import { getProductStockQuantity, isProductSoldOut, normalizeProductData } from '../utils/productImages.js';
 
 const CartContext = createContext();
 
@@ -36,6 +36,11 @@ export const CartProvider = ({ children }) => {
 
   const addToCart = (product, quantity = 1, size = null, color = null) => {
     const normalizedProduct = normalizeProductData(product);
+    const availableStock = getProductStockQuantity(normalizedProduct);
+
+    if (isProductSoldOut(normalizedProduct)) {
+      return;
+    }
 
     setItems(prevItems => {
       const existingIndex = prevItems.findIndex(
@@ -44,11 +49,18 @@ export const CartProvider = ({ children }) => {
 
       if (existingIndex > -1) {
         const newItems = [...prevItems];
-        newItems[existingIndex].quantity += quantity;
+        const nextQuantity = newItems[existingIndex].quantity + quantity;
+        newItems[existingIndex].quantity = availableStock === null
+          ? nextQuantity
+          : Math.min(nextQuantity, availableStock);
         return newItems;
       }
 
-      return [...prevItems, { ...normalizedProduct, quantity, size, color }];
+      const nextQuantity = availableStock === null
+        ? quantity
+        : Math.min(quantity, availableStock);
+
+      return [...prevItems, { ...normalizedProduct, quantity: nextQuantity, size, color }];
     });
   };
 
@@ -69,7 +81,12 @@ export const CartProvider = ({ children }) => {
     setItems(prevItems =>
       prevItems.map(item =>
         item.id === productId && item.size === size && item.color === color
-          ? { ...item, quantity }
+          ? {
+              ...item,
+              quantity: getProductStockQuantity(item) === null
+                ? quantity
+                : Math.min(quantity, getProductStockQuantity(item))
+            }
           : item
       )
     );

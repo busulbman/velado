@@ -18,6 +18,140 @@ const ORDERS_COLLECTION = 'orders';
 const CATEGORIES_COLLECTION = 'categories';
 const SETTINGS_COLLECTION = 'settings';
 const ADMINS_COLLECTION = 'admins';
+const IMGBB_UPLOAD_URL = 'https://api.imgbb.com/1/upload';
+
+export const SUPPORTED_PRODUCT_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg'];
+export const MAX_PRODUCT_IMAGE_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+export const MAX_PRODUCT_IMAGE_FILE_SIZE_MB = Math.round(
+  MAX_PRODUCT_IMAGE_FILE_SIZE_BYTES / (1024 * 1024)
+);
+
+const isFileObject = (value) => (
+  typeof File !== 'undefined' && value instanceof File
+);
+
+const isImageFile = (file) => (
+  isFileObject(file) &&
+  typeof file.type === 'string' &&
+  file.type.startsWith('image/')
+);
+
+const isSupportedImageFile = (file) => (
+  isImageFile(file) &&
+  SUPPORTED_PRODUCT_IMAGE_TYPES.includes(file.type.toLowerCase())
+);
+
+const stripBase64DataUrlPrefix = (value) => (
+  typeof value === 'string'
+    ? value.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '').trim()
+    : ''
+);
+
+const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
+  if (!isFileObject(file)) {
+    reject(new Error('Geçerli bir dosya seçin.'));
+    return;
+  }
+
+  if (!isImageFile(file)) {
+    reject(new Error('Lütfen sadece görsel dosyası seçin.'));
+    return;
+  }
+
+  if (!isSupportedImageFile(file)) {
+    reject(new Error('Sadece PNG veya JPG/JPEG görseller yükleyebilirsiniz.'));
+    return;
+  }
+
+  if (!Number.isFinite(file.size) || file.size <= 0) {
+    reject(new Error('Seçilen görsel dosyası boş veya okunamıyor.'));
+    return;
+  }
+
+  if (file.size > MAX_PRODUCT_IMAGE_FILE_SIZE_BYTES) {
+    reject(new Error(`Görsel boyutu en fazla ${MAX_PRODUCT_IMAGE_FILE_SIZE_MB} MB olabilir.`));
+    return;
+  }
+
+  const reader = new FileReader();
+  let settled = false;
+
+  const finish = (callback) => {
+    if (settled) {
+      return;
+    }
+
+    settled = true;
+    callback();
+  };
+
+  reader.onerror = () => {
+    finish(() => {
+      reject(new Error('Görsel dosyası okunurken hata oluştu. Lütfen dosyayı tekrar seçin.'));
+    });
+  };
+
+  reader.onloadend = () => {
+    finish(() => {
+      if (reader.error) {
+        reject(new Error('Görsel dosyası okunurken hata oluştu. Lütfen dosyayı tekrar seçin.'));
+        return;
+      }
+
+      const base64String = stripBase64DataUrlPrefix(reader.result);
+
+      if (!base64String) {
+        reject(new Error('Görsel verisi okunamadı. Lütfen farklı bir dosya deneyin.'));
+        return;
+      }
+
+      resolve(base64String);
+    });
+  };
+
+  reader.readAsDataURL(file);
+});
+
+export const uploadProductImage = async (file) => {
+  const apiKey = process.env.REACT_APP_IMGBB_API_KEY?.trim();
+
+  if (!apiKey) {
+    throw new Error('ImgBB API anahtarı eksik. REACT_APP_IMGBB_API_KEY değerini ayarlayın.');
+  }
+
+  if (!isFileObject(file)) {
+    throw new Error('Geçerli bir görsel dosyası seçin.');
+  }
+
+  const base64Image = await readFileAsBase64(file);
+  const formData = new FormData();
+
+  formData.append('key', apiKey);
+  formData.append('image', base64Image);
+
+  const response = await fetch(IMGBB_UPLOAD_URL, {
+    method: 'POST',
+    body: formData
+  });
+
+  let responseData;
+
+  try {
+    responseData = await response.json();
+  } catch (error) {
+    throw new Error('ImgBB yanıtı okunamadı. Lütfen tekrar deneyin.');
+  }
+
+  if (!response.ok || !responseData?.success || !responseData?.data?.url) {
+    throw new Error(
+      responseData?.error?.message ||
+      responseData?.data?.error?.message ||
+      'Görsel ImgBB\'ye yüklenemedi.'
+    );
+  }
+
+  return responseData.data.url;
+};
 
 // Admin Authentication
 export const checkIsAdmin = async (userId) => {
@@ -65,7 +199,7 @@ export const createProduct = async (productData) => {
 export const updateProduct = async (productId, updates) => {
   try {
     const docRef = doc(db, PRODUCTS_COLLECTION, productId);
-    const normalizedUpdates = prepareProductForSave(updates);
+    const normalizedUpdates = prepareProductForSave(updates, { partial: true });
     await updateDoc(docRef, {
       ...normalizedUpdates,
       updatedAt: new Date().toISOString()
@@ -103,7 +237,7 @@ export const getAllOrders = async () => {
   try {
     const q = query(collection(db, ORDERS_COLLECTION), orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return snapshot.docs.map((orderDoc) => ({ id: orderDoc.id, ...orderDoc.data() }));
   } catch (error) {
     console.error('Error fetching orders:', error);
     return [];
@@ -154,7 +288,7 @@ export const getAllCategories = async () => {
   try {
     const q = query(collection(db, CATEGORIES_COLLECTION), orderBy('name', 'asc'));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return snapshot.docs.map((categoryDoc) => ({ id: categoryDoc.id, ...categoryDoc.data() }));
   } catch (error) {
     console.error('Error fetching categories:', error);
     return [];
@@ -206,7 +340,6 @@ export const getSettings = async () => {
       return docSnap.data();
     }
 
-    // Default settings
     return {
       freeShippingLimit: 1000,
       shippingCost: 49,
@@ -243,33 +376,33 @@ export const getDashboardStats = async () => {
       getDocs(collection(db, ORDERS_COLLECTION))
     ]);
 
-    const products = productsSnapshot.docs.map(doc => doc.data());
-    const orders = ordersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const products = productsSnapshot.docs.map((productDoc) => productDoc.data());
+    const orders = ordersSnapshot.docs.map((orderDoc) => ({ id: orderDoc.id, ...orderDoc.data() }));
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const todayOrders = orders.filter(order => {
+    const todayOrders = orders.filter((order) => {
       const orderDate = new Date(order.createdAt);
       return orderDate >= today;
     });
 
     const totalRevenue = orders
-      .filter(order => order.status !== 'cancelled')
+      .filter((order) => order.status !== 'cancelled')
       .reduce((sum, order) => sum + (order.total || 0), 0);
 
     const todayRevenue = todayOrders
-      .filter(order => order.status !== 'cancelled')
+      .filter((order) => order.status !== 'cancelled')
       .reduce((sum, order) => sum + (order.total || 0), 0);
 
     return {
       totalProducts: products.length,
-      activeProducts: products.filter(p => p.isActive !== false).length,
+      activeProducts: products.filter((product) => product.isActive !== false).length,
       totalOrders: orders.length,
       todayOrders: todayOrders.length,
       totalRevenue,
       todayRevenue,
-      pendingOrders: orders.filter(o => o.status === 'pending').length,
+      pendingOrders: orders.filter((order) => order.status === 'pending').length,
       recentOrders: orders.slice(0, 10)
     };
   } catch (error) {

@@ -4,7 +4,7 @@ import { Heart, Minus, Plus, Truck, RefreshCw, Shield, ChevronRight, Image as Im
 import { useCart } from '../context/CartContext.js';
 import ProductCard from '../components/ProductCard.js';
 import { getProductById, getProducts, slugifyCategory } from '../firebase/products.js';
-import { normalizeProductImages } from '../utils/productImages.js';
+import { getProductStockQuantity, isProductSoldOut, normalizeProductImages } from '../utils/productImages.js';
 import './ProductDetail.css';
 
 const ProductDetail = () => {
@@ -29,6 +29,7 @@ const ProductDetail = () => {
           setSelectedImage(0);
           setSelectedSize(found.sizes?.[0] || null);
           setSelectedColor(found.colors?.[0] || null);
+          setQuantity(1);
           const allProducts = await getProducts({ category: found.category });
           setRelatedProducts(allProducts.filter(p => p.id !== id).slice(0, 4));
         }
@@ -68,6 +69,10 @@ const ProductDetail = () => {
   };
 
   const handleAddToCart = () => {
+    if (isProductSoldOut(product)) {
+      return;
+    }
+
     addToCart(product, quantity, selectedSize, selectedColor);
     openCart();
   };
@@ -75,6 +80,9 @@ const ProductDetail = () => {
   const categorySlug = slugifyCategory(product.category);
   const productImages = normalizeProductImages(product);
   const selectedImageUrl = productImages[selectedImage] || productImages[0] || '';
+  const stockQuantity = getProductStockQuantity(product);
+  const soldOut = isProductSoldOut(product);
+  const canIncreaseQuantity = stockQuantity === null ? true : quantity < stockQuantity;
 
   return (
     <div className="product-detail">
@@ -122,6 +130,13 @@ const ProductDetail = () => {
           <div className="product-info">
             <span className="product-category">{product.category}</span>
             <h1 className="product-name">{product.name}</h1>
+            <p className={`product-stock ${soldOut ? 'sold-out' : ''}`}>
+              {stockQuantity === null
+                ? 'Stok bilgisi yakında güncellenecek'
+                : soldOut
+                  ? 'Tükendi'
+                  : `Stok: ${stockQuantity}`}
+            </p>
 
             <div className={`product-price ${product.originalPrice || product.discount ? 'has-discount' : ''}`}>
               <span className="price-current">{formatPrice(product.price)}</span>
@@ -168,17 +183,17 @@ const ProductDetail = () => {
 
             <div className="product-actions">
               <div className="quantity-selector">
-                <button onClick={() => setQuantity(q => Math.max(1, q - 1))}>
+                <button onClick={() => setQuantity(q => Math.max(1, q - 1))} disabled={soldOut || quantity <= 1}>
                   <Minus size={16} />
                 </button>
                 <span>{quantity}</span>
-                <button onClick={() => setQuantity(q => q + 1)}>
+                <button onClick={() => setQuantity(q => (canIncreaseQuantity ? q + 1 : q))} disabled={soldOut || !canIncreaseQuantity}>
                   <Plus size={16} />
                 </button>
               </div>
 
-              <button className="btn btn-primary add-to-cart" onClick={handleAddToCart}>
-                Sepete Ekle
+              <button className="btn btn-primary add-to-cart" onClick={handleAddToCart} disabled={soldOut}>
+                {soldOut ? 'Tükendi' : 'Sepete Ekle'}
               </button>
 
               <button

@@ -183,7 +183,7 @@ export const addProduct = async (productData) => {
 export const updateProduct = async (id, updates) => {
   try {
     const docRef = doc(db, PRODUCTS_COLLECTION, id);
-    const normalizedUpdates = prepareProductForSave(updates);
+    const normalizedUpdates = prepareProductForSave(updates, { partial: true });
     await updateDoc(docRef, {
       ...normalizedUpdates,
       updatedAt: new Date().toISOString()

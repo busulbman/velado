@@ -1,7 +1,29 @@
 export const MAX_PRODUCT_IMAGES = 5;
+const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
 const normalizeImageValue = (value) => (
   typeof value === 'string' ? value.trim() : ''
+);
+
+export const normalizeStockQuantity = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const parsedValue = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsedValue) || parsedValue < 0) {
+    return null;
+  }
+
+  return parsedValue;
+};
+
+export const getProductStockQuantity = (product = {}) => (
+  normalizeStockQuantity(product.stockQuantity)
+);
+
+export const isProductSoldOut = (product = {}) => (
+  getProductStockQuantity(product) === 0
 );
 
 export const isValidProductImageUrl = (value) => {
@@ -17,61 +39,6 @@ export const isValidProductImageUrl = (value) => {
   } catch (error) {
     return false;
   }
-};
-
-export const canLoadProductImageUrl = (value, timeoutMs = 10000) => {
-  const normalized = normalizeImageValue(value);
-
-  if (!isValidProductImageUrl(normalized)) {
-    return Promise.resolve(false);
-  }
-
-  return new Promise((resolve) => {
-    const image = new Image();
-    let settled = false;
-
-    const cleanup = () => {
-      image.onload = null;
-      image.onerror = null;
-      clearTimeout(timeoutId);
-    };
-
-    const finish = (result) => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      cleanup();
-      resolve(result);
-    };
-
-    const timeoutId = window.setTimeout(() => finish(false), timeoutMs);
-
-    image.onload = () => finish(true);
-    image.onerror = () => finish(false);
-    image.decoding = 'async';
-    image.referrerPolicy = 'no-referrer';
-    image.src = normalized;
-  });
-};
-
-export const validateLoadableProductImageUrls = async (values = []) => {
-  const images = sanitizeProductImageUrls(values);
-  const results = await Promise.all(
-    images.map(async (imageUrl) => ({
-      imageUrl,
-      isLoadable: await canLoadProductImageUrl(imageUrl)
-    }))
-  );
-  const failedUrls = results
-    .filter((result) => !result.isLoadable)
-    .map((result) => result.imageUrl);
-
-  return {
-    isValid: failedUrls.length === 0,
-    failedUrls
-  };
 };
 
 export const sanitizeProductImageUrls = (value, limit = MAX_PRODUCT_IMAGES) => {
@@ -104,29 +71,42 @@ export const normalizeProductImages = (product = {}) => (
 export const normalizeProductData = (product = {}) => {
   const images = normalizeProductImages(product);
   const primaryImage = images[0] || '';
+  const stockQuantity = getProductStockQuantity(product);
 
   return {
     ...product,
     images,
     imageUrl: primaryImage,
-    image: primaryImage
+    image: primaryImage,
+    stockQuantity
   };
 };
 
-export const prepareProductForSave = (product = {}) => {
-  const images = sanitizeProductImageUrls([
-    ...(Array.isArray(product.images) ? product.images : []),
-    product.imageUrl,
-    product.image
-  ]);
-  const primaryImage = images[0] || '';
+export const prepareProductForSave = (product = {}, options = {}) => {
+  const { partial = false } = options;
+  const normalizedProduct = { ...product };
+  const shouldNormalizeImages = !partial || ['images', 'imageUrl', 'image'].some((key) => hasOwn(product, key));
+  const shouldNormalizeStock = !partial || hasOwn(product, 'stockQuantity');
 
-  return {
-    ...product,
-    images,
-    imageUrl: primaryImage,
-    image: primaryImage
-  };
+  if (shouldNormalizeImages) {
+    const images = sanitizeProductImageUrls([
+      ...(Array.isArray(product.images) ? product.images : []),
+      product.imageUrl,
+      product.image
+    ]);
+    const primaryImage = images[0] || '';
+
+    normalizedProduct.images = images;
+    normalizedProduct.imageUrl = primaryImage;
+    normalizedProduct.image = primaryImage;
+  }
+
+  if (shouldNormalizeStock) {
+    const stockQuantity = normalizeStockQuantity(product.stockQuantity);
+    normalizedProduct.stockQuantity = stockQuantity ?? 0;
+  }
+
+  return normalizedProduct;
 };
 
 export const validateProductImageInputs = (imageInputs = []) => {

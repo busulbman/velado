@@ -163,6 +163,11 @@
   background-color: var(--bg-secondary);
 }
 
+.quantity-control button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .quantity-control span {
   width: 32px;
   text-align: center;

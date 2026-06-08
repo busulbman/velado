@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Heart, ShoppingBag, Image as ImageIcon } from 'lucide-react';
 import { useCart } from '../context/CartContext.js';
-import { normalizeProductImages } from '../utils/productImages.js';
+import { isProductSoldOut, normalizeProductImages } from '../utils/productImages.js';
 import './ProductCard.css';
 
 const ProductCard = ({ product }) => {
@@ -20,10 +20,16 @@ const ProductCard = ({ product }) => {
     discount
   } = product;
   const productImages = normalizeProductImages(product);
+  const soldOut = isProductSoldOut(product);
 
   const handleAddToCart = (e) => {
     e.preventDefault();
     e.stopPropagation();
+
+    if (soldOut) {
+      return;
+    }
+
     addToCart(product, 1);
     openCart();
   };
@@ -49,7 +55,7 @@ const ProductCard = ({ product }) => {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="product-card-image">
+      <div className={`product-card-image ${soldOut ? 'sold-out' : ''}`}>
         {productImages[0] ? (
           <img
             src={isHovered && productImages[1] ? productImages[1] : productImages[0]}
@@ -62,8 +68,9 @@ const ProductCard = ({ product }) => {
           </div>
         )}
 
-        {(isNew || discount) && (
+        {(soldOut || isNew || discount) && (
           <div className="product-card-badges">
+            {soldOut && <span className="badge badge-sold-out">Tükendi</span>}
             {isNew && <span className="badge badge-new">Yeni</span>}
             {discount && <span className="badge badge-sale">%{discount}</span>}
           </div>
@@ -78,9 +85,9 @@ const ProductCard = ({ product }) => {
         </button>
 
         <div className={`product-card-actions ${isHovered ? 'visible' : ''}`}>
-          <button className="btn btn-primary" onClick={handleAddToCart}>
+          <button className="btn btn-primary" onClick={handleAddToCart} disabled={soldOut}>
             <ShoppingBag size={16} />
-            Sepete Ekle
+            {soldOut ? 'Tükendi' : 'Sepete Ekle'}
           </button>
         </div>
       </div>

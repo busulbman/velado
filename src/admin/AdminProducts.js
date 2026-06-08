@@ -10,7 +10,8 @@ import {
   Image as ImageIcon,
   Tag,
   Save,
-  Package
+  Package,
+  Upload
 } from 'lucide-react';
 import {
   getAllProducts,
@@ -18,14 +19,17 @@ import {
   updateProduct,
   deleteProduct,
   toggleProductActive,
-  getAllCategories
+  getAllCategories,
+  uploadProductImage,
+  MAX_PRODUCT_IMAGE_FILE_SIZE_BYTES,
+  MAX_PRODUCT_IMAGE_FILE_SIZE_MB,
+  SUPPORTED_PRODUCT_IMAGE_TYPES
 } from '../firebase/admin.js';
 import {
   MAX_PRODUCT_IMAGES,
-  canLoadProductImageUrl,
-  isValidProductImageUrl,
+  getProductStockQuantity,
+  isProductSoldOut,
   normalizeProductImages,
-  validateLoadableProductImageUrls,
   validateProductImageInputs
 } from '../utils/productImages.js';
 import AdminLayout from './components/AdminLayout.js';
@@ -35,13 +39,14 @@ const createDefaultProduct = () => ({
   name: '',
   description: '',
   price: '',
+  stockQuantity: '',
   originalPrice: '',
   category: '',
   sizes: [],
   colors: [],
   material: '',
   care: '',
-  images: [''],
+  images: [],
   featured: false,
   isNew: false,
   discount: ''
@@ -49,21 +54,20 @@ const createDefaultProduct = () => ({
 
 const getInitialImageFields = (product = {}) => {
   const images = normalizeProductImages(product);
-  return images.length > 0 ? images : [''];
+  return images.length > 0 ? images : [];
 };
-
-const createImagePreviewState = (status = 'idle', url = '', message = '') => ({
-  status,
-  url,
-  message
-});
-
-const getEmptyImagePreviewStates = (count = 1) => (
-  Array.from({ length: count }, () => createImagePreviewState())
-);
 
 const sizeOptions = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 const colorOptions = ['Siyah', 'Beyaz', 'Gri', 'Lacivert', 'Kahverengi', 'Bej', 'Haki', 'Bordo'];
+const isBrowserFile = (file) => (
+  typeof File !== 'undefined' && file instanceof File
+);
+
+const isImageFile = (file) => (
+  isBrowserFile(file) &&
+  typeof file.type === 'string' &&
+  file.type.startsWith('image/')
+);
 
 const AdminProducts = () => {
   const [products, setProducts] = useState([]);
@@ -78,85 +82,16 @@ const AdminProducts = () => {
   const [deletingProduct, setDeletingProduct] = useState(null);
   const [discountingProduct, setDiscountingProduct] = useState(null);
   const [formData, setFormData] = useState(() => createDefaultProduct());
-  const [imagePreviewStates, setImagePreviewStates] = useState(() => (
-    getEmptyImagePreviewStates(createDefaultProduct().images.length)
-  ));
   const [imageError, setImageError] = useState('');
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, percent: 0 });
   const [saving, setSaving] = useState(false);
   const [discountForm, setDiscountForm] = useState({ type: 'percent', value: '' });
-  const imagePreviewStatesRef = useRef(imagePreviewStates);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     fetchData();
   }, []);
-
-  useEffect(() => {
-    imagePreviewStatesRef.current = imagePreviewStates;
-  }, [imagePreviewStates]);
-
-  useEffect(() => {
-    let isCancelled = false;
-    const trimmedImages = formData.images.map((image) => image.trim());
-    const previousStates = imagePreviewStatesRef.current;
-
-    setImagePreviewStates(
-      trimmedImages.map((imageUrl, index) => {
-        const previousState = previousStates[index];
-
-        if (!imageUrl) {
-          return createImagePreviewState();
-        }
-
-        if (!isValidProductImageUrl(imageUrl)) {
-          return createImagePreviewState('error', imageUrl, 'Görsel yüklenemedi');
-        }
-
-        if (
-          previousState?.url === imageUrl &&
-          (previousState.status === 'loaded' || previousState.status === 'error')
-        ) {
-          return previousState;
-        }
-
-        return createImagePreviewState('loading', imageUrl);
-      })
-    );
-
-    trimmedImages.forEach(async (imageUrl, index) => {
-      const previousState = previousStates[index];
-
-      if (!imageUrl || !isValidProductImageUrl(imageUrl)) {
-        return;
-      }
-
-      if (
-        previousState?.url === imageUrl &&
-        (previousState.status === 'loaded' || previousState.status === 'error')
-      ) {
-        return;
-      }
-
-      const isLoadable = await canLoadProductImageUrl(imageUrl);
-
-      if (isCancelled) {
-        return;
-      }
-
-      setImagePreviewStates((prev) => {
-        const next = [...prev];
-        next[index] = createImagePreviewState(
-          isLoadable ? 'loaded' : 'error',
-          imageUrl,
-          isLoadable ? '' : 'Görsel yüklenemedi'
-        );
-        return next;
-      });
-    });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [formData.images]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -196,6 +131,7 @@ const AdminProducts = () => {
         ...product,
         images: getInitialImageFields(product),
         price: product.price?.toString() || '',
+        stockQuantity: getProductStockQuantity(product)?.toString() || '',
         originalPrice: product.originalPrice?.toString() || '',
         discount: product.discount?.toString() || ''
       });
@@ -203,18 +139,20 @@ const AdminProducts = () => {
       setEditingProduct(null);
       setFormData(createDefaultProduct());
     }
-    setImagePreviewStates(
-      getEmptyImagePreviewStates(product ? getInitialImageFields(product).length : createDefaultProduct().images.length)
-    );
+    setUploadProgress({ current: 0, total: 0, percent: 0 });
     setImageError('');
     setShowModal(true);
   };
 
   const handleCloseModal = () => {
+    if (uploadingImages) {
+      return;
+    }
+
     setShowModal(false);
     setEditingProduct(null);
     setFormData(createDefaultProduct());
-    setImagePreviewStates(getEmptyImagePreviewStates(createDefaultProduct().images.length));
+    setUploadProgress({ current: 0, total: 0, percent: 0 });
     setImageError('');
   };
 
@@ -244,27 +182,95 @@ const AdminProducts = () => {
     }));
   };
 
-  const handleImageLinkChange = (index, value) => {
-    setImageError('');
-    setFormData((prev) => ({
-      ...prev,
-      images: prev.images.map((image, imageIndex) => (
-        imageIndex === index ? value : image
-      ))
-    }));
-  };
+  const isSupportedImageFile = (file) => (
+    isImageFile(file) &&
+    SUPPORTED_PRODUCT_IMAGE_TYPES.includes(file.type.toLowerCase())
+  );
 
-  const handleAddImageField = () => {
-    if (formData.images.length >= MAX_PRODUCT_IMAGES) {
-      setImageError(`En fazla ${MAX_PRODUCT_IMAGES} görsel ekleyebilirsiniz.`);
+  const handleImageUpload = async (e) => {
+    const fileList = e.target?.files;
+
+    if (!fileList || fileList.length === 0 || !fileList[0]) {
       return;
     }
 
-    setImageError('');
-    setFormData((prev) => ({
-      ...prev,
-      images: [...prev.images, '']
-    }));
+    const selectedFiles = Array.from(fileList);
+
+    if (selectedFiles.length === 0) {
+      return;
+    }
+
+    const invalidFileObject = selectedFiles.find((file) => !isBrowserFile(file));
+    if (invalidFileObject) {
+      setImageError('Seçilen dosya okunamadı. Lütfen tekrar deneyin.');
+      e.target.value = '';
+      return;
+    }
+
+    const nonImageFile = selectedFiles.find((file) => !isImageFile(file));
+    if (nonImageFile) {
+      setImageError('Lütfen sadece görsel dosyası seçin.');
+      e.target.value = '';
+      return;
+    }
+
+    const remainingSlots = MAX_PRODUCT_IMAGES - formData.images.length;
+    if (remainingSlots <= 0) {
+      setImageError(`En fazla ${MAX_PRODUCT_IMAGES} görsel ekleyebilirsiniz.`);
+      e.target.value = '';
+      return;
+    }
+
+    const unsupportedFile = selectedFiles.find((file) => !isSupportedImageFile(file));
+    if (unsupportedFile) {
+      setImageError('Sadece PNG veya JPG/JPEG dosyaları yükleyebilirsiniz.');
+      e.target.value = '';
+      return;
+    }
+
+    const oversizedFile = selectedFiles.find((file) => file.size > MAX_PRODUCT_IMAGE_FILE_SIZE_BYTES);
+    if (oversizedFile) {
+      setImageError(`Her görsel en fazla ${MAX_PRODUCT_IMAGE_FILE_SIZE_MB} MB olabilir.`);
+      e.target.value = '';
+      return;
+    }
+
+    const filesToUpload = selectedFiles.slice(0, remainingSlots);
+
+    if (filesToUpload.length < selectedFiles.length) {
+      setImageError(`Sadece ilk ${filesToUpload.length} görsel yüklenecek. Maksimum ${MAX_PRODUCT_IMAGES} görsel destekleniyor.`);
+    } else {
+      setImageError('');
+    }
+
+    setUploadingImages(true);
+    setUploadProgress({ current: 0, total: filesToUpload.length, percent: 0 });
+
+    try {
+      const uploadedUrls = [];
+
+      for (const [index, file] of filesToUpload.entries()) {
+        const uploadedUrl = await uploadProductImage(file);
+        uploadedUrls.push(uploadedUrl);
+
+        setUploadProgress({
+          current: index + 1,
+          total: filesToUpload.length,
+          percent: Math.round(((index + 1) / filesToUpload.length) * 100)
+        });
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        images: [...prev.images, ...uploadedUrls]
+      }));
+    } catch (error) {
+      console.error('Error uploading images:', error);
+      setImageError(error.message || 'Görseller yüklenirken hata oluştu.');
+    } finally {
+      setUploadingImages(false);
+      e.target.value = '';
+    }
   };
 
   const handleRemoveImage = (index) => {
@@ -277,6 +283,13 @@ const AdminProducts = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const normalizedStockQuantity = Number.parseInt(formData.stockQuantity, 10);
+
+    if (!Number.isInteger(normalizedStockQuantity) || normalizedStockQuantity < 0) {
+      setImageError('Stok adedi 0 veya daha büyük bir tam sayı olmalıdır.');
+      return;
+    }
+
     const imageValidation = validateProductImageInputs(formData.images);
 
     if (!imageValidation.isValid) {
@@ -284,40 +297,22 @@ const AdminProducts = () => {
       return;
     }
 
+    if (uploadingImages) {
+      setImageError('Görsel yükleme tamamlanmadan kaydedemezsiniz.');
+      return;
+    }
+
     setSaving(true);
     setImageError('');
 
     try {
-      const loadValidation = await validateLoadableProductImageUrls(imageValidation.images);
-
-      if (!loadValidation.isValid) {
-        setImagePreviewStates(
-          formData.images.map((image) => {
-            const trimmedImage = image.trim();
-
-            if (!trimmedImage) {
-              return createImagePreviewState();
-            }
-
-            const hasFailed = loadValidation.failedUrls.includes(trimmedImage);
-
-            return createImagePreviewState(
-              hasFailed ? 'error' : 'loaded',
-              trimmedImage,
-              hasFailed ? 'Görsel yüklenemedi' : ''
-            );
-          })
-        );
-        setImageError('Kaydetmeden önce yüklenemeyen görselleri düzeltin.');
-        return;
-      }
-
       const productData = {
         ...formData,
         images: imageValidation.images,
         price: parseFloat(formData.price) || 0,
+        stockQuantity: normalizedStockQuantity,
         originalPrice: formData.originalPrice ? parseFloat(formData.originalPrice) : null,
-        discount: formData.discount ? parseInt(formData.discount) : null
+        discount: formData.discount ? parseInt(formData.discount, 10) : null
       };
 
       if (editingProduct) {
@@ -409,7 +404,7 @@ const AdminProducts = () => {
       ...products.map((product) => product.category).filter(Boolean)
     ])
   ];
-  const canAddMoreImages = formData.images.length < MAX_PRODUCT_IMAGES;
+  const canUploadMoreImages = formData.images.length < MAX_PRODUCT_IMAGES;
 
   if (loading) {
     return (
@@ -465,6 +460,7 @@ const AdminProducts = () => {
                 <th>Ürün</th>
                 <th>Kategori</th>
                 <th>Fiyat</th>
+                <th>Stok</th>
                 <th>Durum</th>
                 <th>İşlemler</th>
               </tr>
@@ -498,6 +494,15 @@ const AdminProducts = () => {
                         <span className="price-original">{formatPrice(product.originalPrice)}</span>
                       )}
                     </div>
+                  </td>
+                  <td>
+                    {isProductSoldOut(product) ? (
+                      <span className="stock-badge sold-out">Tükendi</span>
+                    ) : (
+                      <span className="stock-badge">
+                        {getProductStockQuantity(product) ?? '-'}
+                      </span>
+                    )}
                   </td>
                   <td>
                     <span className={`status-badge ${product.isActive !== false ? 'active' : 'inactive'}`}>
@@ -556,7 +561,7 @@ const AdminProducts = () => {
           <div className="admin-modal admin-modal-lg" onClick={(e) => e.stopPropagation()}>
             <div className="admin-modal-header">
               <h2>{editingProduct ? 'Ürün Düzenle' : 'Yeni Ürün'}</h2>
-              <button className="admin-modal-close" onClick={handleCloseModal}>
+              <button className="admin-modal-close" onClick={handleCloseModal} disabled={uploadingImages}>
                 <X size={20} />
               </button>
             </div>
@@ -604,6 +609,19 @@ const AdminProducts = () => {
                     value={formData.originalPrice}
                     onChange={handleInputChange}
                     min="0"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Stok Adedi *</label>
+                  <input
+                    type="number"
+                    name="stockQuantity"
+                    value={formData.stockQuantity}
+                    onChange={handleInputChange}
+                    min="0"
+                    step="1"
+                    required
                   />
                 </div>
 
@@ -689,89 +707,70 @@ const AdminProducts = () => {
                 </div>
 
                 <div className="form-group full">
-                  <label>Görsel Linkleri</label>
+                  <label>Ürün Görselleri</label>
                   <div className="image-upload-area">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="image-file-input"
+                      onChange={handleImageUpload}
+                    />
                     <div className="image-upload-header">
                       <p className="image-upload-hint">
-                        Direkt görsel linki yapıştırın. En fazla {MAX_PRODUCT_IMAGES} görsel ekleyebilirsiniz.
+                        PNG veya JPG seçin. Her görsel en fazla {MAX_PRODUCT_IMAGE_FILE_SIZE_MB} MB olabilir. Görseller ImgBB'ye sırayla yüklenir ve URL'leri otomatik kaydedilir.
                       </p>
                       <button
                         type="button"
                         className="upload-btn"
-                        onClick={handleAddImageField}
-                        disabled={!canAddMoreImages}
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={!canUploadMoreImages || uploadingImages}
                       >
-                        <Plus size={18} />
-                        Görsel Ekle
+                        <Upload size={18} />
+                        {uploadingImages ? 'Yükleniyor...' : 'Görsel Seç'}
                       </button>
                     </div>
 
                     <span className="image-limit-note">
-                      {formData.images.length} / {MAX_PRODUCT_IMAGES} görsel alanı
+                      {formData.images.length} / {MAX_PRODUCT_IMAGES} görsel yüklendi
                     </span>
 
+                    {uploadingImages && uploadProgress.total > 0 && (
+                      <div className="upload-progress">
+                        <div className="progress-bar">
+                          <div
+                            className="progress-fill"
+                            style={{ width: `${uploadProgress.percent}%` }}
+                          />
+                        </div>
+                        <span className="progress-text">
+                          {uploadProgress.current} / {uploadProgress.total} (%{uploadProgress.percent})
+                        </span>
+                      </div>
+                    )}
+
                     {formData.images.length > 0 ? (
-                      <div className="image-link-list">
-                        {formData.images.map((url, index) => {
-                          const imageState = imagePreviewStates[index] || createImagePreviewState();
-                          const trimmedUrl = url.trim();
-                          const isLoaded = imageState.status === 'loaded';
-                          const isLoading = imageState.status === 'loading';
-                          const hasError = imageState.status === 'error';
-
-                          return (
-                            <div key={index} className="image-link-row">
-                              <div className="image-link-input-group">
-                                <label htmlFor={`product-image-${index}`}>Görsel {index + 1}</label>
-                                <input
-                                  id={`product-image-${index}`}
-                                  type="url"
-                                  className="image-link-input"
-                                  placeholder="https://..."
-                                  value={url}
-                                  onChange={(e) => handleImageLinkChange(index, e.target.value)}
-                                />
-                                <span
-                                  className={`image-link-status ${isLoaded ? 'valid' : ''} ${isLoading ? 'loading' : ''} ${hasError ? 'error' : ''}`}
-                                >
-                                  {!trimmedUrl && 'Görsel linki girin'}
-                                  {trimmedUrl && isLoading && 'Görsel kontrol ediliyor...'}
-                                  {trimmedUrl && isLoaded && 'Görsel hazır'}
-                                  {trimmedUrl && hasError && 'Görsel yüklenemedi'}
-                                </span>
-
-                                {trimmedUrl && (
-                                  <div className={`image-preview ${hasError ? 'error' : ''}`}>
-                                    {isLoaded ? (
-                                      <img src={trimmedUrl} alt={`Preview ${index + 1}`} />
-                                    ) : (
-                                      <div className="image-preview-placeholder">
-                                        {isLoading ? 'Önizleme yükleniyor...' : <><ImageIcon size={18} /><span>Görsel yüklenemedi</span></>}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-
-                                {hasError && (
-                                  <p className="image-preview-warning">Görsel yüklenemedi</p>
-                                )}
-                              </div>
-
-                              <button
-                                type="button"
-                                className="remove-image-btn"
-                                onClick={() => handleRemoveImage(index)}
-                                aria-label={`Görsel ${index + 1} sil`}
-                              >
-                                <X size={14} />
-                              </button>
+                      <div className="image-previews">
+                        {formData.images.map((url, index) => (
+                          <div key={url} className="image-preview-card">
+                            <div className="image-preview">
+                              <img src={url} alt={`Görsel ${index + 1}`} />
                             </div>
-                          );
-                        })}
+                            <button
+                              type="button"
+                              className="remove-image-btn"
+                              onClick={() => handleRemoveImage(index)}
+                              aria-label={`Görsel ${index + 1} sil`}
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     ) : (
                       <div className="image-empty-state">
-                        Görsel eklemek için “Görsel Ekle” butonunu kullanın.
+                        Görsel eklemek için yukarıdan PNG veya JPG dosyası seçin.
                       </div>
                     )}
 
@@ -804,10 +803,10 @@ const AdminProducts = () => {
               </div>
 
               <div className="admin-modal-footer">
-                <button type="button" className="btn-secondary" onClick={handleCloseModal}>
+                <button type="button" className="btn-secondary" onClick={handleCloseModal} disabled={uploadingImages}>
                   İptal
                 </button>
-                <button type="submit" className="btn-primary" disabled={saving}>
+                <button type="submit" className="btn-primary" disabled={saving || uploadingImages}>
                   <Save size={18} />
                   {saving ? 'Kaydediliyor...' : 'Kaydet'}
                 </button>
