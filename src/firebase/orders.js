@@ -79,7 +79,7 @@ export const ORDER_STATUS = {
 };
 
 export const ORDER_STATUS_LABELS = {
-  pending: 'Onay Bekliyor',
+  pending: 'Yeni Sipariş',
   confirmed: 'Onaylandı',
   processing: 'Hazırlanıyor',
   shipped: 'Kargoya Verildi',

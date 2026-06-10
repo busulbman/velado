@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Search,
@@ -11,44 +11,95 @@ import {
   MapPin,
   Phone,
   Mail,
-  Save
+  Save,
+  Building2,
+  Banknote,
+  Bell
 } from 'lucide-react';
-import { getAllOrders, getOrderById, updateOrderStatus } from '../firebase/admin.js';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase/config.js';
+import { getOrderById, updateOrderStatus } from '../firebase/admin.js';
 import { ORDER_STATUS_LABELS } from '../firebase/orders.js';
 import { normalizeProductImages } from '../utils/productImages.js';
 import AdminLayout from './components/AdminLayout.js';
 import './AdminOrders.css';
 
 const statusOptions = [
-  { value: 'pending', label: 'Onay Bekliyor', icon: Clock },
-  { value: 'confirmed', label: 'Onaylandı', icon: CheckCircle },
+  { value: 'pending', label: 'Yeni Sipariş', icon: Clock },
   { value: 'processing', label: 'Hazırlanıyor', icon: Package },
   { value: 'shipped', label: 'Kargoya Verildi', icon: Truck },
   { value: 'delivered', label: 'Teslim Edildi', icon: CheckCircle },
   { value: 'cancelled', label: 'İptal Edildi', icon: X }
 ];
 
+const notificationSound = () => {
+  try {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    oscillator.frequency.value = 800;
+    oscillator.type = 'sine';
+    gainNode.gain.value = 0.3;
+
+    oscillator.start();
+    setTimeout(() => {
+      oscillator.frequency.value = 1000;
+    }, 100);
+    setTimeout(() => {
+      oscillator.stop();
+      audioContext.close();
+    }, 200);
+  } catch (e) {
+    console.log('Ses çalınamadı:', e);
+  }
+};
+
 const AdminOrdersList = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [newOrderAlert, setNewOrderAlert] = useState(null);
+  const previousOrdersCount = useRef(0);
+  const isInitialLoad = useRef(true);
 
   useEffect(() => {
-    fetchOrders();
-  }, []);
+    const q = query(
+      collection(db, 'orders'),
+      orderBy('createdAt', 'desc')
+    );
 
-  const fetchOrders = async () => {
-    setLoading(true);
-    try {
-      const data = await getAllOrders();
-      setOrders(data);
-    } catch (error) {
-      console.error('Error fetching orders:', error);
-    } finally {
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const ordersData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      if (!isInitialLoad.current && ordersData.length > previousOrdersCount.current) {
+        const newOrder = ordersData[0];
+        setNewOrderAlert(newOrder);
+        notificationSound();
+
+        setTimeout(() => {
+          setNewOrderAlert(null);
+        }, 10000);
+      }
+
+      previousOrdersCount.current = ordersData.length;
+      isInitialLoad.current = false;
+      setOrders(ordersData);
       setLoading(false);
-    }
-  };
+    }, (error) => {
+      console.error('Siparişler dinlenirken hata:', error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat('tr-TR', {
@@ -71,6 +122,7 @@ const AdminOrdersList = () => {
   const filteredOrders = orders.filter((order) => {
     const matchesSearch =
       order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.orderNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.shipping?.firstName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.shipping?.lastName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.userEmail?.toLowerCase().includes(searchQuery.toLowerCase());
@@ -92,6 +144,26 @@ const AdminOrdersList = () => {
   return (
     <AdminLayout>
       <div className="admin-orders">
+        {newOrderAlert && (
+          <div className="new-order-notification">
+            <div className="notification-icon">
+              <Bell size={20} />
+            </div>
+            <div className="notification-content">
+              <strong>Yeni Sipariş Geldi!</strong>
+              <span>
+                #{newOrderAlert.orderNumber || newOrderAlert.id.slice(-8).toUpperCase()} - {newOrderAlert.shipping?.firstName} {newOrderAlert.shipping?.lastName}
+              </span>
+            </div>
+            <button
+              className="notification-close"
+              onClick={() => setNewOrderAlert(null)}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         <div className="orders-header">
           <div className="orders-header-left">
             <h1>Siparişler</h1>
@@ -129,6 +201,7 @@ const AdminOrdersList = () => {
                 <th>Müşteri</th>
                 <th>Tarih</th>
                 <th>Tutar</th>
+                <th>Ödeme</th>
                 <th>Durum</th>
                 <th>İşlem</th>
               </tr>
@@ -137,7 +210,9 @@ const AdminOrdersList = () => {
               {filteredOrders.map((order) => (
                 <tr key={order.id}>
                   <td>
-                    <span className="order-id">#{order.id.slice(-8).toUpperCase()}</span>
+                    <span className="order-id">
+                      #{order.orderNumber || order.id.slice(-8).toUpperCase()}
+                    </span>
                   </td>
                   <td>
                     <div className="customer-cell">
@@ -154,8 +229,23 @@ const AdminOrdersList = () => {
                     <span className="order-total">{formatPrice(order.total)}</span>
                   </td>
                   <td>
+                    <span className={`payment-badge ${order.paymentMethod === 'bank_transfer' ? 'bank' : 'cod'}`}>
+                      {order.paymentMethod === 'bank_transfer' ? (
+                        <>
+                          <Building2 size={14} />
+                          Havale
+                        </>
+                      ) : (
+                        <>
+                          <Banknote size={14} />
+                          Kapıda
+                        </>
+                      )}
+                    </span>
+                  </td>
+                  <td>
                     <span className={`order-status-badge status-${order.status}`}>
-                      {ORDER_STATUS_LABELS[order.status]}
+                      {ORDER_STATUS_LABELS[order.status] || 'Yeni Sipariş'}
                     </span>
                   </td>
                   <td>
@@ -194,7 +284,7 @@ const AdminOrderDetail = () => {
     try {
       const data = await getOrderById(id);
       setOrder(data);
-      setSelectedStatus(data?.status || '');
+      setSelectedStatus(data?.status || 'pending');
       setTrackingNumber(data?.trackingNumber || '');
     } catch (error) {
       console.error('Error fetching order:', error);
@@ -275,9 +365,9 @@ const AdminOrderDetail = () => {
             Geri
           </button>
           <div className="order-detail-title">
-            <h1>Sipariş #{order.id.slice(-8).toUpperCase()}</h1>
+            <h1>Sipariş #{order.orderNumber || order.id.slice(-8).toUpperCase()}</h1>
             <span className={`order-status-badge status-${order.status}`}>
-              {ORDER_STATUS_LABELS[order.status]}
+              {ORDER_STATUS_LABELS[order.status] || 'Yeni Sipariş'}
             </span>
           </div>
         </div>
@@ -372,6 +462,25 @@ const AdminOrderDetail = () => {
 
           <div className="order-detail-sidebar">
             <div className="order-card">
+              <h3>Ödeme Bilgisi</h3>
+              <div className="payment-info">
+                <div className={`payment-type ${order.paymentMethod === 'bank_transfer' ? 'bank' : 'cod'}`}>
+                  {order.paymentMethod === 'bank_transfer' ? (
+                    <>
+                      <Building2 size={20} />
+                      <span>Havale / EFT</span>
+                    </>
+                  ) : (
+                    <>
+                      <Banknote size={20} />
+                      <span>Kapıda Ödeme</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="order-card">
               <h3>Müşteri Bilgileri</h3>
               <div className="customer-info">
                 <div className="info-item">
@@ -399,6 +508,13 @@ const AdminOrderDetail = () => {
                 </div>
               </div>
             </div>
+
+            {order.orderNote && (
+              <div className="order-card">
+                <h3>Sipariş Notu</h3>
+                <p className="order-note-text">{order.orderNote}</p>
+              </div>
+            )}
 
             <div className="order-card">
               <h3>Sipariş Bilgileri</h3>
